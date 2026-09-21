@@ -6,7 +6,22 @@ from openai import OpenAI
 from test_workflow import DEMO
 
 from net_new.dataset import Dataset
-from net_new.pipeline import build_input, config, fresh_prediction, inference_connection, run_replay
+from net_new.pipeline import (
+    PROMPT,
+    build_input,
+    config,
+    fresh_prediction,
+    inference_connection,
+    run_replay,
+)
+
+
+def test_agent_prompt_requires_evidence_for_comparison_novelty_and_causation():
+    prompt = " ".join(PROMPT.split())
+    assert "classify it as uncertain" in prompt
+    assert "Do not infer novelty from absence" in prompt
+    assert "Do not claim causation or quantified impact" in prompt
+    assert "title and change text" in prompt
 
 
 def test_gateway_receives_only_local_model_request(monkeypatch):
@@ -65,6 +80,7 @@ def test_gateway_receives_only_local_model_request(monkeypatch):
     assert json.loads(body["input"]) == {"CURRENT": context["current"], "PRIOR": context["prior"]}
     assert "documents" not in body and "content_base64" not in request.content.decode()
     assert body["instructions"] and body["text"]["format"]["type"] == "json_schema"
+    assert body["max_output_tokens"] == 16000
 
 
 def test_gateway_mode_never_falls_back_to_provider_credentials(monkeypatch):

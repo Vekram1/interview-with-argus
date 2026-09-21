@@ -205,6 +205,28 @@ uv run python -m net_new.compare --dataset data/pilot \
   --references references/development.jsonl --run runs/experiment-01 \
   --output runs/experiment-01/aligned.jsonl
 
+# Grade the model output with the structured LLM-as-a-judge evaluator.
+# The judge checks citation identity, semantic support from the cited chunks,
+# coverage, comparison, classification, and supported extra findings.
+uv run --env-file .env.openrouter python -m net_new.evaluate \
+  --dataset data/pilot --run runs/baseline-replay \
+  --references references/development.jsonl --output runs/baseline-eval
+
+# Reproduce the evidence-gated prompt experiment and evaluate it.
+uv run --env-file .env.openrouter python -m net_new.cli replay \
+  --dataset data/pilot --provider litellm \
+  --output runs/evidence-gated-prompt-v3
+uv run --env-file .env.openrouter python -m net_new.evaluate \
+  --dataset data/pilot --run runs/evidence-gated-prompt-v3 \
+  --references references/development.jsonl \
+  --output runs/evidence-gated-prompt-v3-eval
+
+# Evaluate one case first; repeat --case-id to select several cases.
+uv run --env-file .env.openrouter python -m net_new.evaluate \
+  --dataset data/pilot --run runs/baseline-replay \
+  --references references/development.jsonl --case-id AMD:0000002488-24-000109 \
+  --output runs/baseline-eval-amd-109
+
 # Final transfer run after freezing your selected configuration.
 uv run --env-file .env python -m net_new.cli replay --dataset data/holdout \
   --provider litellm --output runs/holdout-final
@@ -227,6 +249,26 @@ uv run --env-file .env python -m net_new.cli download --ticker NVDA \
 The public price snapshot has gaps, including MSFT and AAPL in the tested 2024
 period. Missing prices produce an error, not invented values; downloaded source
 filings remain usable. Source coverage and price provenance accompany each corpus.
+
+The evaluator uses small finding-level evidence judgments followed by a compact
+case-level reconciliation for coverage, split/merged findings, classification,
+and supported extras. The primary `cases.jsonl` contains one concise result per
+case: its 0–100 score, score breakdown, context-sufficiency summary, and compact
+finding verdicts. Detailed model output, atomic claims, citation observations,
+and judge metadata are retained separately under `audit/`.
+
+For development references, context sufficiency checks whether the source-checked
+current and prior quotes were present in the exact chunks supplied to the model.
+It distinguishes intact, fragmented, and missing evidence so retrieval failures
+are not confused with model failures. A digest-only chunk ID can be uniquely
+recovered for evaluation, but remains marked as an invalid citation format.
+`summary.json` reports coverage, claim support, semantic citation support,
+claim-aware fully/partially supported extra counts, classification accuracy,
+context sufficiency, scores, latency, tokens, cost, and failures. Literal quote
+matching is retained only as an audit diagnostic. The
+judge endpoint must be OpenAI-compatible and configured through
+`EVAL_INFERENCE_URL`, `EVAL_INFERENCE_KEY`, and `EVAL_MODEL` (the `ARGUS_*` names
+are accepted too).
 
 See [DATA_CONTRACT.md](DATA_CONTRACT.md) for input/output formats and
 [references/README.md](references/README.md) for reference and alignment conventions.
