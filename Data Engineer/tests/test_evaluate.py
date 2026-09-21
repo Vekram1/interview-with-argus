@@ -16,6 +16,7 @@ from net_new.evaluate import (
     build_reconciliation_payload,
     compact_case_evaluation,
     evaluate_case,
+    finalize_context_sufficiency,
     inspect_output_citations,
     judge_case_hybrid,
     run_evaluation,
@@ -205,6 +206,36 @@ def test_context_sufficiency_detects_evidence_split_across_adjacent_chunks():
     assert context.status == "partial"
     assert context.current_evidence == "fragmented"
     assert context.chunk_integrity == "fragmented"
+
+
+def test_context_status_does_not_treat_missing_canonical_quote_as_proof_of_insufficiency():
+    dataset, filing, record = demo_case_and_record()
+    reference = demo_reference(dataset, filing, record, include_prior=False)
+    reference.findings[0].current_evidence[0].quote = (
+        "A canonical wording that is not present in the supplied chunk."
+    )
+
+    availability = assess_context_sufficiency(reference, record)
+    context = finalize_context_sufficiency(availability, supported_reference_ids=set())[0]
+
+    assert context.status == "unknown"
+    assert "does not prove" in context.reason
+
+
+def test_grounded_reference_match_proves_context_was_semantically_sufficient():
+    dataset, filing, record = demo_case_and_record()
+    reference = demo_reference(dataset, filing, record, include_prior=False)
+    reference.findings[0].current_evidence[0].quote = (
+        "A canonical wording that is not present in the supplied chunk."
+    )
+
+    availability = assess_context_sufficiency(reference, record)
+    finding_id = reference.findings[0].finding_id
+    context = finalize_context_sufficiency(availability, {finding_id})[0]
+
+    assert context.status == "sufficient"
+    assert context.current_evidence == "missing"
+    assert "grounded output" in context.reason
 
 
 def test_judge_payload_includes_source_chunks_not_only_citation_metadata():

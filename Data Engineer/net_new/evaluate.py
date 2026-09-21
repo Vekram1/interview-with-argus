@@ -32,7 +32,7 @@ from .dataset import Dataset, Document, local_file
 from .pipeline import load_records
 from .references import ReferenceCase, load_references
 
-EVALUATOR_VERSION = "eval-v5"
+EVALUATOR_VERSION = "eval-v6"
 RUBRIC_VERSION = "rubric-v2"
 
 
@@ -395,6 +395,50 @@ def assess_context_sufficiency(
             )
         )
     return results
+
+
+def finalize_context_sufficiency(
+    results: list[ReferenceContextEvaluation], supported_reference_ids: set[str]
+) -> list[ReferenceContextEvaluation]:
+    """Finalize user-facing context status after output evidence is judged."""
+
+    finalized = []
+    for result in results:
+        if result.reference_finding_id in supported_reference_ids:
+            finalized.append(
+                result.model_copy(
+                    update={
+                        "status": "sufficient",
+                        "reason": (
+                            "A grounded output matched this reference finding, proving that "
+                            "the supplied context was semantically sufficient for the result."
+                        ),
+                    }
+                )
+            )
+        elif result.status != "sufficient":
+            finalized.append(
+                result.model_copy(
+                    update={
+                        "status": "unknown",
+                        "reason": (
+                            "Canonical reference evidence was missing or fragmented; this "
+                            "does not prove the supplied context was semantically insufficient."
+                        ),
+                    }
+                )
+            )
+        else:
+            finalized.append(result)
+    return finalized
+
+
+def _supported_reference_ids(evaluation: CaseEvaluation) -> set[str]:
+    supported = set()
+    for finding in evaluation.findings:
+        if finding.claims and all(claim.verdict == "supported" for claim in finding.claims):
+            supported.update(finding.matched_reference_ids)
+    return supported
 
 
 def _compact_reference(
@@ -1456,6 +1500,9 @@ def run_evaluation(
                 else:
                     evaluation = evaluate_case(dataset, filing, reference, record, judge)
                     judge_metadata.append(metadata)
+                context_results = finalize_context_sufficiency(
+                    context_results, _supported_reference_ids(evaluation)
+                )
             evaluations.append(evaluation)
             compact = compact_case_evaluation(evaluation, context_results)
             compact_evaluations.append(compact)
